@@ -1,0 +1,6 @@
+# $NetBSD$
+
+include "arch/amd64/conf/GENERIC"
+
+makeoptions 	KUBSAN=1		# Kernel Undefined Behavior Sanitizer
+options KUBSAN

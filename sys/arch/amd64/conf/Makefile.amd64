@@ -49,7 +49,7 @@ CFLAGS+=      -mindirect-branch-register
 .endif
 
 # Kernel Undefined Behavior Sanitizer 
-.if ${kUBSAN:U0} > 0 && ${HAVE_GCC:U0} > 0
+.if ${KUBSAN:U0} > 0 && ${HAVE_GCC:U0} > 0
 CFLAGS+=	-fsanitize=undefined
 .endif
 

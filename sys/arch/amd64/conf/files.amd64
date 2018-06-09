@@ -59,8 +59,7 @@ file	arch/x86/x86/dbregs.c			machdep
 file	arch/x86/x86/spectre.c			machdep
 file	arch/amd64/amd64/lock_stubs.S		machdep
 file	dev/cons.c				machdep
-file    arch/amd64/amd64/kubsan.c       machdep
-
+file	arch/amd64/amd64/kubsan.c		machdep
 file	arch/amd64/amd64/mptramp.S        multiprocessor
 
 #
