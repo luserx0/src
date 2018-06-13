@@ -75,3 +75,11 @@ void __ubsan_handle_load_invalid_value(struct invalid_value_data *, unsigned lon
 void __ubsan_handle_load_invalid_value(struct invalid_value_data *data,
 				unsigned long val)
 {}
+
+void __ubsan_handle_nonnull_return(void *data);
+void __ubsan_handle_nonnull_return(void *data)
+{}
+
+void __ubsan_handle_nonnull_arg(void *data);
+void __ubsan_handle_nonnull_arg(void *data)
+{}
