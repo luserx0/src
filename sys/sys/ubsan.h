@@ -1,6 +1,8 @@
 #ifndef _LIB_UBSAN_H
 #define _LIB_UBSAN_H
 
+#include <sys/types.h>
+
 enum {
 	type_kind_int = 0,
 	type_kind_float = 1,
@@ -86,4 +88,3 @@ typedef intmax_t s_max;
 typedef uintmax_t u_max;
 
 #endif
-
