@@ -21,6 +21,7 @@ defparam opt_physmem.h	PHYSMEM_MAX_ADDR PHYSMEM_MAX_SIZE
 
 # Enable GCC spectre V2 mitigation options
 defflag opt_spectre.h	SPECTRE_V2_GCC_MITIGATION
+defflag opt_kubsan.h	KUBSAN
 
 #
 # XXX these are just here at the moment so that we can share files
@@ -31,7 +32,6 @@ defflag			PMC
 defflag			USER_LDT
 defflag			KASLR
 defflag eisa.h EISA
-defflaq opt_kubsan.h KUBSAN
 
 # Start code
 file	arch/amd64/amd64/locore.S		machdep
