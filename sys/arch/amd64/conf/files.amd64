@@ -21,7 +21,9 @@ defparam opt_physmem.h	PHYSMEM_MAX_ADDR PHYSMEM_MAX_SIZE
 
 # Enable GCC spectre V2 mitigation options
 defflag opt_spectre.h	SPECTRE_V2_GCC_MITIGATION
-defflag opt_kubsan.h	KUBSAN
+
+# Enable Kernel Undefined Behavior Sanitizer options
+defflag opt_kubsan.h KUBSAN
 
 #
 # XXX these are just here at the moment so that we can share files
@@ -38,6 +40,7 @@ file	arch/amd64/amd64/locore.S		machdep
 file	arch/amd64/amd64/vector.S		machdep
 file	arch/amd64/amd64/copy.S			machdep
 file	arch/amd64/amd64/spl.S			machdep
+
 file	arch/amd64/amd64/amd64func.S		machdep
 file	arch/amd64/amd64/amd64_trap.S		machdep
 file	arch/amd64/amd64/autoconf.c		machdep
@@ -48,6 +51,7 @@ file	arch/amd64/amd64/db_disasm.c		ddb
 file	arch/amd64/amd64/db_interface.c		ddb
 file	arch/amd64/amd64/db_machdep.c		ddb
 file	arch/amd64/amd64/kobj_machdep.c		modular
+file	arch/amd64/amd64/kubsan.c		kubsan
 file	kern/subr_disk_mbr.c			disk
 file	arch/amd64/amd64/gdt.c			machdep
 file	arch/amd64/amd64/machdep.c		machdep
@@ -59,7 +63,7 @@ file	arch/x86/x86/dbregs.c			machdep
 file	arch/x86/x86/spectre.c			machdep
 file	arch/amd64/amd64/lock_stubs.S		machdep
 file	dev/cons.c				machdep
-file	arch/amd64/amd64/kubsan.c		machdep
+
 file	arch/amd64/amd64/mptramp.S        multiprocessor
 
 #
@@ -190,3 +194,4 @@ file	arch/amd64/acpi/acpi_wakeup_low.S	acpi
 
 include	"arch/amd64/conf/majors.amd64"
 endif #xen
+

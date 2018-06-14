@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.amd64,v 1.70 2018/04/18 10:38:47 martin Exp $
+#	$NetBSD: Makefile.amd64,v 1.71 2018/06/02 15:09:37 christos Exp $
 
 # Makefile for NetBSD
 #
@@ -20,7 +20,7 @@
 MACHINE_ARCH=x86_64
 USETOOLS?=	no
 NEED_OWN_INSTALL_TARGET?=no
-.include <bsd.own.mk>
+.include <bsd.init.mk>
 
 USE_SSP?=	yes
 
@@ -48,9 +48,9 @@ CFLAGS+=      -mindirect-branch=thunk-inline
 CFLAGS+=      -mindirect-branch-register
 .endif
 
-# Kernel Undefined Behavior Sanitizer 
+# Kernel Undefined Behavior Sanitizer options
 .if ${KUBSAN:U0} > 0 && ${HAVE_GCC:U0} > 0
-CFLAGS+=	-fsanitize=undefined
+CFLAGS+=		-fsanitize=undefined
 .endif
 
 ##
@@ -122,3 +122,4 @@ netbsd32_sigcode.o: assym.h
 ## (10) Appending make options.
 ##
 %MAKEOPTIONSAPPEND
+

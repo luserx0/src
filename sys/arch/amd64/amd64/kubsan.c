@@ -77,9 +77,8 @@ void __ubsan_handle_load_invalid_value(struct invalid_value_data *data,
 {}
 
 void __ubsan_handle_nonnull_return(void *data);
-void __ubsan_handle_nonnull_return(void *data)
-{}
+void __ubsan_handle_nonnull_return(void *data) {}
 
+/* Compiler moaning */
 void __ubsan_handle_nonnull_arg(void *data);
-void __ubsan_handle_nonnull_arg(void *data)
-{}
+void __ubsan_handle_nonnull_arg(void *data) {}
