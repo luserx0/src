@@ -1,20 +1,59 @@
 #include <sys/cdefs.h>
 __KERNEL_RCSID(0, "$NetBSD$");
 
-/* We'll need some additions here, TODO */
+#include <sys/kernel.h>
+#include <sys/types.h>
+#include <sys/sched.h>
+#include <bitops.h>
+/* Non-Existent:
+#include <linux/bug.h>
+#include <linux/ctype.h>
+#include <linux/init.h>
+*/
 
-/*
- * Export symbols for KUBSan
- */
 
-/* Might have to move this around */
+/* Description -- TODO */
+
+/* Might have to move this around -- TODO*/
 #include <sys/ubsan.h>
 
+/* TODO: Gotta Understand this first to implement
+const char *type_check_kinds[] = {
+	"load of",
+	"store to",
+	"reference binding to",
+	"member access within",
+	"member call on",
+	"constructor call on",
+	"downcast of",
+	"downcast of"
+};
+*/
 
-/* Introductory messages and clock definitions */
+/* WEIRD LOW LEVEL STUFF */
+#define REPORTED_BIT 31
+
+#if (BITS_PER_LONG == 64) && defined(__BIG_ENDIAN)
+#define COLUMN_MASK (~(1U << REPORTED_BIT))
+#define LINE_MASK   (~0U)
+#else
+#define COLUMN_MASK   (~0U)
+#define LINE_MASK (~(1U << REPORTED_BIT))
+#endif
+
+#define VALUE_LENGTH 40
+
+
+static bool was_reported(struct source_location *location)
+{
+	return test_and_set_bit(REPORTED_BIT, &location->reported);
+}
+
+
+/* Introductory messages and clock definitions
 static DEFINE_SPINLOCK(report_lock);
 
-static void ubsan_prologue(struct source_location *location,
+static void kubsan_open(struct source_location *location,
 			unsigned long *flags)
 {
 	current->in_ubsan++;
@@ -25,7 +64,7 @@ static void ubsan_prologue(struct source_location *location,
 	print_source_location("KUBSAN: Undefined behaviour in", location);
 }
 
-static void ubsan_epilogue(unsigned long *flags)
+static void kubsan_close(unsigned long *flags)
 {
 	dump_stack();
 	pr_err("========================================"
@@ -33,6 +72,7 @@ static void ubsan_epilogue(unsigned long *flags)
 	spin_unlock_irqrestore(&report_lock, *flags);
 	current->in_ubsan--;
 }
+*/
 
 
 /* Function handles --to be filled-- */
