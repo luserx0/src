@@ -2,11 +2,17 @@
 __KERNEL_RCSID(0, "$NetBSD$");
 
 #include <sys/kernel.h>
-#include <param.h> //Kamil indication
+#include <sys/param.h> //Kamil indication
 #include <sys/types.h>
 #include <sys/sched.h>
 #include <sys/bitops.h>
 #include <sys/atomic.h> //For new test and set bits
+
+//Check is these are useful
+#include <sys/proc.h>
+#include <sys/sched.h>
+#include <sys/systm.h>
+
 /* Non-Existent:
 #include <linux/bug.h>
 #include <linux/ctype.h>
@@ -45,12 +51,44 @@ const char *type_check_kinds[] = {
 
 #define VALUE_LENGTH 40
 
-/* NOTE: Working on integrating NetBSD test-and-set method
+
+/* TODO:
+ * - pr_err
+ * - WARN_ON
+ * - current
+
+
+/* TODO: Refactor */
+static inline unsigned long
+test_and_set_bit(unsigned int bit, volatile unsigned long *ptr)
+{
+	const unsigned int units = (sizeof(*ptr) * CHAR_BIT);
+	volatile unsigned long *const p = &ptr[bit / units];
+	const unsigned long mask = (1UL << (bit % units));
+	unsigned long v;
+
+	do v = *p; while (atomic_cas_ulong(p, v, (v | mask)) != v);
+
+	return ((v & mask) != 0);
+}
+
 static bool was_reported(struct source_location *location)
 {
 	return test_and_set_bit(REPORTED_BIT, &location->reported);
 }
-*/
+
+static void print_source_location(const char *prefix,
+				struct source_location *loc)
+{
+	pr_err("%s %s:%d:%d\n", prefix, loc->file_name,
+		loc->line & LINE_MASK, loc->column & COLUMN_MASK);
+}
+
+static bool suppress_report(struct source_location *loc)
+{
+	return current->in_ubsan || was_reported(loc);
+}
+
 static bool type_is_int(struct type_descriptor *type)
 {
 	return type->type_kind == type_kind_int;
@@ -58,15 +96,18 @@ static bool type_is_int(struct type_descriptor *type)
 
 static bool type_is_signed(struct type_descriptor *type)
 {
-	WARN_ON(!type_is_int(type));
+	//WARN_ON(!type_is_int(type));
+	DEBUG_LOCKS_WARN_ON(!type_is_int(type));
 	return  type->type_info & 1;
 }
+
 
 static unsigned type_bit_width(struct type_descriptor *type)
 {
 	return 1 << (type->type_info >> 1);
 }
 
+/*
 static bool is_inline_int(struct type_descriptor *type)
 {
 	unsigned inline_bits = sizeof(unsigned long)*8;
@@ -110,10 +151,10 @@ static u_max get_unsigned_val(struct type_descriptor *type, unsigned long val)
 
 	return *(u_max *)val;
 }
-
+*/
 
 /* Introductory messages and clock definitions */
-static DEFINE_SPINLOCK(report_lock);
+/*static DEFINE_SPINLOCK(report_lock);
 
 static void kubsan_open(struct source_location *location,
 			unsigned long *flags)
@@ -135,7 +176,7 @@ static void kubsan_close(unsigned long *flags)
 	spin_unlock_irqrestore(&report_lock, *flags);
 	current->in_ubsan--;
 }
-
+*/
 
 /* Function handles --to be filled-- */
 
