@@ -2,9 +2,11 @@
 __KERNEL_RCSID(0, "$NetBSD$");
 
 #include <sys/kernel.h>
+#include <param.h> //Kamil indication
 #include <sys/types.h>
 #include <sys/sched.h>
-#include <bitops.h>
+#include <sys/bitops.h>
+#include <sys/atomic.h> //For new test and set bits
 /* Non-Existent:
 #include <linux/bug.h>
 #include <linux/ctype.h>
@@ -43,14 +45,74 @@ const char *type_check_kinds[] = {
 
 #define VALUE_LENGTH 40
 
-
+/* NOTE: Working on integrating NetBSD test-and-set method
 static bool was_reported(struct source_location *location)
 {
 	return test_and_set_bit(REPORTED_BIT, &location->reported);
 }
+*/
+static bool type_is_int(struct type_descriptor *type)
+{
+	return type->type_kind == type_kind_int;
+}
+
+static bool type_is_signed(struct type_descriptor *type)
+{
+	WARN_ON(!type_is_int(type));
+	return  type->type_info & 1;
+}
+
+static unsigned type_bit_width(struct type_descriptor *type)
+{
+	return 1 << (type->type_info >> 1);
+}
+
+static bool is_inline_int(struct type_descriptor *type)
+{
+	unsigned inline_bits = sizeof(unsigned long)*8;
+	unsigned bits = type_bit_width(type);
+
+	WARN_ON(!type_is_int(type));
+
+	return bits <= inline_bits;
+}
+
+static s_max get_signed_val(struct type_descriptor *type, unsigned long val)
+{
+	if (is_inline_int(type)) {
+		unsigned extra_bits = sizeof(s_max)*8 - type_bit_width(type);
+		return ((s_max)val) << extra_bits >> extra_bits;
+	}
+
+	if (type_bit_width(type) == 64)
+		return *(s64 *)val;
+
+	return *(s_max *)val;
+}
+
+static bool val_is_negative(struct type_descriptor *type, unsigned long val)
+{
+	return type_is_signed(type) && get_signed_val(type, val) < 0;
+}
+
+static bool val_is_negative(struct type_descriptor *type, unsigned long val)
+{
+	return type_is_signed(type) && get_signed_val(type, val) < 0;
+}
+
+static u_max get_unsigned_val(struct type_descriptor *type, unsigned long val)
+{
+	if (is_inline_int(type))
+		return val;
+
+	if (type_bit_width(type) == 64)
+		return *(u64 *)val;
+
+	return *(u_max *)val;
+}
 
 
-/* Introductory messages and clock definitions
+/* Introductory messages and clock definitions */
 static DEFINE_SPINLOCK(report_lock);
 
 static void kubsan_open(struct source_location *location,
@@ -59,6 +121,7 @@ static void kubsan_open(struct source_location *location,
 	current->in_ubsan++;
 	spin_lock_irqsave(&report_lock, *flags);
 
+	//TODO: Find pr_error equivalent
 	pr_err("========================================"
 		"========================================\n");
 	print_source_location("KUBSAN: Undefined behaviour in", location);
@@ -72,7 +135,6 @@ static void kubsan_close(unsigned long *flags)
 	spin_unlock_irqrestore(&report_lock, *flags);
 	current->in_ubsan--;
 }
-*/
 
 
 /* Function handles --to be filled-- */
