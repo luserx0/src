@@ -6,13 +6,12 @@ __KERNEL_RCSID(0, "$NetBSD$");
 #include <sys/types.h>
 #include <sys/sched.h>
 #include <sys/bitops.h>
-#include <sys/atomic.h> //For new test and set bits
-#include <sys/systm.h>  // aprint and many more
+#include <sys/atomic.h>
+#include <sys/systm.h>
 
 //Check if these are useful
 #include <sys/proc.h>
-#include <sys/sched.h>
-#include <sys/systm.h>
+#include <sys/lwp.h>
 
 /* Non-Existent:
 #include <linux/bug.h>
@@ -20,6 +19,12 @@ __KERNEL_RCSID(0, "$NetBSD$");
 #include <linux/init.h>
 */
 
+/* TODO: Determine where this goes
+#ifdef CONFIG_UBSAN
+	unsigned int			in_ubsan;
+#endif
+*/
+unsigned int in_ubsan;
 
 /* Description -- TODO */
 
@@ -56,14 +61,51 @@ const char *type_check_kinds[] = {
 
 /* TODO:
  * - pr_err --> aprint_error() || aprint_debug() && int aprint_get_error_count(void);
- * - current --> sched.h --> TROUBLE --> need help
- * - spin_lock_irqsave
- * - static DEFINE_SPINLOCK(report_lock);
+ * - current --> sched.h --> TROUBLE --> curlwp might help
+ * - spin_lock_irqsave --> use mutexes
+ * - static DEFINE_SPINLOCK(report_lock); --> find mutex equivalent
  * - report_lock
- * - dump_stack
- * - scnprintf
+ * - dump_stack -->
+ * - scnprintf --> NetBSD Equivalent --> snprintf
 */
 
+/**
+ * scnprintf - Format a string and place it in a buffer
+ * @buf: The buffer to place the result into
+ * @size: The size of the buffer, including the trailing null space
+ * @fmt: The format string to use
+ * @...: Arguments for the format string
+ *
+ * The return value is the number of characters written into @buf not including
+ * the trailing '\0'. If @size is == 0 the function returns 0.
+ */
+
+/* HELP
+int scnprintf(char * buf, size_t size, const char * fmt, ...)
+{
+       ssize_t ssize = size;
+       va_list args;
+       int i;
+
+       va_start(args, fmt);
+       i = vsnprintf(buf, size, fmt, args);
+       va_end(args);
+
+       return (i >= ssize) ? (ssize - 1) : i;
+}
+int scnprintf(char *buf, size_t size, const char *fmt, ...)
+{
+	va_list args;
+	int i;
+
+	va_start(args, fmt);
+	i = vscnprintf(buf, size, fmt, args);
+	va_end(args);
+
+	return i;
+}
+EXPORT_SYMBOL(scnprintf);
+*/
 /* TODO: Refactor */
 static inline unsigned long
 test_and_set_bit(unsigned int bit, volatile unsigned long *ptr)
@@ -158,37 +200,37 @@ static void val_to_string(char *str, size_t size, struct type_descriptor *type,
 {
 	if (type_is_int(type)) {
 		if (type_bit_width(type) == 128) {
-/*#if defined(CONFIG_ARCH_SUPPORTS_INT128) && defined(__SIZEOF_INT128__)
+#if defined(CONFIG_ARCH_SUPPORTS_INT128) && defined(__SIZEOF_INT128__)
 			u_max val = get_unsigned_val(type, value);
 
-			scnprintf(str, size, "0x%08x%08x%08x%08x",
-				(u32)(val >> 96),
-				(u32)(val >> 64),
-				(u32)(val >> 32),
-				(u32)(val));
+			snprintf(str, size, "0x%08x%08x%08x%08x",
+				(uint32_t)(val >> 96),
+				(uint32_t)(val >> 64),
+				(uint32_t)(val >> 32),
+				(uint32_t)(val));
 #else
-			WARN_ON(1);
+			KASSERT(1);
 #endif
-*/
+
 		} else if (type_is_signed(type)) {
-			scnprintf(str, size, "%lld",
-				(s64)get_signed_val(type, value));
+			snprintf(str, size, "%lld",
+				(int64_t)get_signed_val(type, value));
 		} else {
-			scnprintf(str, size, "%llu",
-				(u64)get_unsigned_val(type, value));
+			snprintf(str, size, "%llu",
+				(uint64_t)get_unsigned_val(type, value));
 		}
 	}
 }
 
 
-/* Introductory messages and clock definitions */
+/* Introductory messages */
 static DEFINE_SPINLOCK(report_lock);
 
 static void kubsan_open(struct source_location *location,
 			unsigned long *flags)
 {
 	current->in_ubsan++;
-	spin_lock_irqsave(&report_lock, *flags);
+	//spin_lock_irqsave(&report_lock, *flags);
 
 	aprint_error("========================================"
 		"========================================\n");
