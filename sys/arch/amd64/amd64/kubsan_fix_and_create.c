@@ -62,50 +62,9 @@ const char *type_check_kinds[] = {
 /* TODO:
  * - pr_err --> aprint_error() || aprint_debug() && int aprint_get_error_count(void);
  * - current --> sched.h --> TROUBLE --> curlwp might help
- * - spin_lock_irqsave --> use mutexes
- * - static DEFINE_SPINLOCK(report_lock); --> find mutex equivalent
- * - report_lock
- * - dump_stack -->
- * - scnprintf --> NetBSD Equivalent --> snprintf
+ * - First over flow handler
 */
 
-/**
- * scnprintf - Format a string and place it in a buffer
- * @buf: The buffer to place the result into
- * @size: The size of the buffer, including the trailing null space
- * @fmt: The format string to use
- * @...: Arguments for the format string
- *
- * The return value is the number of characters written into @buf not including
- * the trailing '\0'. If @size is == 0 the function returns 0.
- */
-
-/* HELP
-int scnprintf(char * buf, size_t size, const char * fmt, ...)
-{
-       ssize_t ssize = size;
-       va_list args;
-       int i;
-
-       va_start(args, fmt);
-       i = vsnprintf(buf, size, fmt, args);
-       va_end(args);
-
-       return (i >= ssize) ? (ssize - 1) : i;
-}
-int scnprintf(char *buf, size_t size, const char *fmt, ...)
-{
-	va_list args;
-	int i;
-
-	va_start(args, fmt);
-	i = vscnprintf(buf, size, fmt, args);
-	va_end(args);
-
-	return i;
-}
-EXPORT_SYMBOL(scnprintf);
-*/
 /* TODO: Refactor */
 static inline unsigned long
 test_and_set_bit(unsigned int bit, volatile unsigned long *ptr)
@@ -132,12 +91,11 @@ static void print_source_location(const char *prefix,
 		loc->line & LINE_MASK, loc->column & COLUMN_MASK);
 }
 
-/* TOUBLE
 static bool suppress_report(struct source_location *loc)
 {
-	return current->in_ubsan || was_reported(loc);
+	return /*curlwp->in_ubsan ||*/was_reported(loc);
 }
-*/
+
 static bool type_is_int(struct type_descriptor *type)
 {
 	return type->type_kind == type_kind_int;
@@ -179,11 +137,12 @@ static s_max get_signed_val(struct type_descriptor *type, unsigned long val)
 	return *(s_max *)val;
 }
 
+/* Commented out for now until used in the handle scenario
 static bool val_is_negative(struct type_descriptor *type, unsigned long val)
 {
 	return type_is_signed(type) && get_signed_val(type, val) < 0;
 }
-
+*/
 static u_max get_unsigned_val(struct type_descriptor *type, unsigned long val)
 {
 	if (is_inline_int(type))
@@ -200,36 +159,29 @@ static void val_to_string(char *str, size_t size, struct type_descriptor *type,
 {
 	if (type_is_int(type)) {
 		if (type_bit_width(type) == 128) {
-#if defined(CONFIG_ARCH_SUPPORTS_INT128) && defined(__SIZEOF_INT128__)
-			u_max val = get_unsigned_val(type, value);
-
-			snprintf(str, size, "0x%08x%08x%08x%08x",
-				(uint32_t)(val >> 96),
-				(uint32_t)(val >> 64),
-				(uint32_t)(val >> 32),
-				(uint32_t)(val));
-#else
 			KASSERT(1);
-#endif
 
 		} else if (type_is_signed(type)) {
-			snprintf(str, size, "%lld",
+			snprintf(str, size, "%ld",
 				(int64_t)get_signed_val(type, value));
 		} else {
-			snprintf(str, size, "%llu",
+			snprintf(str, size, "%lu",
 				(uint64_t)get_unsigned_val(type, value));
 		}
+		/* NOTE: Our s_max and u_max are ld not lld, snprintf might have problems */
 	}
 }
 
 
-/* Introductory messages */
+
+/* Introductory messages
+ * Excluded for now. Will be implemented later with mutex locking
 static DEFINE_SPINLOCK(report_lock);
 
 static void kubsan_open(struct source_location *location,
 			unsigned long *flags)
 {
-	current->in_ubsan++;
+	curlwp->in_ubsan++;
 	//spin_lock_irqsave(&report_lock, *flags);
 
 	aprint_error("========================================"
@@ -243,7 +195,40 @@ static void kubsan_close(unsigned long *flags)
 	aprint_error("========================================"
 		"========================================\n");
 	spin_unlock_irqrestore(&report_lock, *flags);
-	current->in_ubsan--;
+	curlwp->in_ubsan--;
+}
+*/
+static void handle_overflow(struct overflow_data *data, unsigned long lhs,
+			unsigned long rhs, char op)
+{
+
+	struct type_descriptor *type = data->type;
+	//unsigned long flags;
+	struct source_location *location;
+	char lhs_val_str[VALUE_LENGTH];
+	char rhs_val_str[VALUE_LENGTH];
+
+	if (suppress_report(&data->location))
+		return;
+
+	//kubsan_open(&data->location, &flags);
+	aprint_error("========================================"
+		"========================================\n");
+	print_source_location("KUBSan: Undefined behaviour in", location);
+
+	val_to_string(lhs_val_str, sizeof(lhs_val_str), type, lhs);
+	val_to_string(rhs_val_str, sizeof(rhs_val_str), type, rhs);
+	aprint_error("%s integer overflow:\n",
+		type_is_signed(type) ? "signed" : "unsigned");
+	aprint_error("%s %c %s cannot be represented in type %s\n",
+		lhs_val_str,
+		op,
+		rhs_val_str,
+		type->type_name);
+
+	//kubsan_close(&flags);
+	aprint_error("========================================"
+		"========================================\n");
 }
 
 
@@ -253,7 +238,9 @@ void __ubsan_handle_add_overflow(struct overflow_data *, unsigned long, unsigned
 void __ubsan_handle_add_overflow(struct overflow_data *data,
 				unsigned long lhs,
 				unsigned long rhs)
-{}
+{
+	handle_overflow(data, lhs, rhs, '+');
+}
 
 void __ubsan_handle_sub_overflow(struct overflow_data *, unsigned long, unsigned long);
 void __ubsan_handle_sub_overflow(struct overflow_data *data,
