@@ -13,25 +13,24 @@ __KERNEL_RCSID(0, "$NetBSD$");
 #include <sys/proc.h>
 #include <sys/lwp.h>
 
+
+#include <sys/ubsan.h>
+
 /* Non-Existent:
 #include <linux/bug.h>
 #include <linux/ctype.h>
 #include <linux/init.h>
 */
 
-/* TODO: Determine where this goes
-#ifdef CONFIG_UBSAN
-	unsigned int			in_ubsan;
-#endif
-*/
+/* These things will get ya killd*/
 unsigned int in_ubsan;
+#define IS_ALIGNED(x, a)		(((x) & ((typeof(x))(a) - 1)) == 0) //From linux/kernel.h line 61
+
 
 /* Description -- TODO */
 
-/* Might have to move this around -- TODO*/
-#include <sys/ubsan.h>
 
-/* TODO: Gotta understand this first to implement
+/* TODO: Gotta understand this first to implement*/
 const char *type_check_kinds[] = {
 	"load of",
 	"store to",
@@ -42,10 +41,9 @@ const char *type_check_kinds[] = {
 	"downcast of",
 	"downcast of"
 };
-*/
 
-/* WEIRD LOW LEVEL STUFF
- * TODO: Understand their functionality*/
+
+/* WEIRD LOW LEVEL STUFF */
 #define REPORTED_BIT 31
 
 #if (BITS_PER_LONG == 64) && defined(__BIG_ENDIAN)
@@ -60,12 +58,14 @@ const char *type_check_kinds[] = {
 
 
 /* TODO:
- * - pr_err --> aprint_error() || aprint_debug() && int aprint_get_error_count(void);
- * - current --> sched.h --> TROUBLE --> curlwp might help
- * - First over flow handler
+ * Refactor test_and_set_bit. Check whether test_test_and_set || compare_and_swap would be better.
+ * Add description
+ * Rename ubsan.h --> kubsan.h, determine proper place
+ * Understand type_check_kinds, maybe re-implement
+ * Understand the low level bit definitions
+ * Add locking to kubsan_open/close
 */
 
-/* TODO: Refactor */
 static inline unsigned long
 test_and_set_bit(unsigned int bit, volatile unsigned long *ptr)
 {
@@ -204,7 +204,7 @@ static void handle_overflow(struct overflow_data *data, unsigned long lhs,
 
 	struct type_descriptor *type = data->type;
 	//unsigned long flags;
-	struct source_location *location;
+	//struct source_location *location;
 	char lhs_val_str[VALUE_LENGTH];
 	char rhs_val_str[VALUE_LENGTH];
 
@@ -214,7 +214,7 @@ static void handle_overflow(struct overflow_data *data, unsigned long lhs,
 	//kubsan_open(&data->location, &flags);
 	aprint_error("========================================"
 		"========================================\n");
-	print_source_location("KUBSan: Undefined behaviour in", location);
+	print_source_location("KUBSan: Undefined behaviour in", &data->location);
 
 	val_to_string(lhs_val_str, sizeof(lhs_val_str), type, lhs);
 	val_to_string(rhs_val_str, sizeof(rhs_val_str), type, rhs);
@@ -232,7 +232,7 @@ static void handle_overflow(struct overflow_data *data, unsigned long lhs,
 }
 
 
-/* Function handles --to be filled-- */
+/* Function handles */
 
 void __ubsan_handle_add_overflow(struct overflow_data *, unsigned long, unsigned long);
 void __ubsan_handle_add_overflow(struct overflow_data *data,
@@ -246,34 +246,181 @@ void __ubsan_handle_sub_overflow(struct overflow_data *, unsigned long, unsigned
 void __ubsan_handle_sub_overflow(struct overflow_data *data,
 				unsigned long lhs,
 				unsigned long rhs)
-{}
+{
+	handle_overflow(data, lhs, rhs, '-');
+
+}
 
 void __ubsan_handle_mul_overflow(struct overflow_data *, unsigned long, unsigned long);
 void __ubsan_handle_mul_overflow(struct overflow_data *data,
 				unsigned long lhs,
 				unsigned long rhs)
-{}
+{
+	handle_overflow(data, lhs, rhs, '*');
+}
 
 void __ubsan_handle_negate_overflow(struct overflow_data *, unsigned long);
 void __ubsan_handle_negate_overflow(struct overflow_data *data,
 				unsigned long old_val)
-{}
+{
+	//unsigned long flags;
+	char old_val_str[VALUE_LENGTH];
+
+	if (suppress_report(&data->location))
+		return;
+
+	//kubsan_open(&data->location, &flags);
+	aprint_error("========================================"
+		"========================================\n");
+	print_source_location("KUBSan: Undefined behaviour in", &data->location);
+
+	val_to_string(old_val_str, sizeof(old_val_str), data->type, old_val);
+
+	aprint_error("negation of %s cannot be represented in type %s:\n",
+		old_val_str, data->type->type_name);
+
+	//kubsan_close(&flags);
+	aprint_error("========================================"
+		"========================================\n");
+
+}
 
 void __ubsan_handle_divrem_overflow(struct overflow_data *, unsigned long, unsigned long);
 void __ubsan_handle_divrem_overflow(struct overflow_data *data,
 				unsigned long lhs,
 				unsigned long rhs)
-{}
+{
+	//unsigned long flags;
+	char rhs_val_str[VALUE_LENGTH];
+
+	if (suppress_report(&data->location))
+		return;
+
+	//kubsan_open(&data->location, &flags);
+	aprint_error("========================================"
+		"========================================\n");
+	print_source_location("KUBSan: Undefined behaviour in", &data->location);
+
+	val_to_string(rhs_val_str, sizeof(rhs_val_str), data->type, rhs);
+
+	if (type_is_signed(data->type) && get_signed_val(data->type, rhs) == -1)
+		aprint_error("division of %s by -1 cannot be represented in type %s\n",
+			rhs_val_str, data->type->type_name);
+	else
+		aprint_error("division by zero\n");
+
+	//kubsan_close(&flags);
+	aprint_error("========================================"
+		"========================================\n");
+
+}
+
+static void handle_null_ptr_deref(struct type_mismatch_data_common *data)
+{
+	//unsigned long flags;
+
+	if (suppress_report(data->location))
+		return;
+
+	//kubsan_open(data->location, &flags);
+	aprint_error("========================================"
+		"========================================\n");
+	print_source_location("KUBSan: Undefined behaviour in", data->location);
+
+	aprint_error("%s null pointer of type %s\n",
+		type_check_kinds[data->type_check_kind],
+		data->type->type_name);
+
+	//kubsan_close(&flags);
+	aprint_error("========================================"
+		"========================================\n");
+}
+
+static void handle_misaligned_access(struct type_mismatch_data_common *data,
+				unsigned long ptr)
+{
+	//unsigned long flags;
+
+	if (suppress_report(data->location))
+		return;
+
+	//kubsan_open(data->location, &flags);
+	aprint_error("========================================"
+		"========================================\n");
+	print_source_location("KUBSan: Undefined behaviour in", data->location);
+
+	aprint_error("%s misaligned address %p for type %s\n",
+		type_check_kinds[data->type_check_kind],
+		(void *)ptr, data->type->type_name);
+	aprint_error("which requires %ld byte alignment\n", data->alignment);
+
+	//kubsan_close(&flags);
+	aprint_error("========================================"
+		"========================================\n");
+}
+
+static void handle_object_size_mismatch(struct type_mismatch_data_common *data,
+					unsigned long ptr)
+{
+	//unsigned long flags;
+
+	if (suppress_report(data->location))
+		return;
+
+	//kubsan_open(data->location, &flags);
+	aprint_error("========================================"
+		"========================================\n");
+	print_source_location("KUBSan: Undefined behaviour in", data->location);
+
+	aprint_error("%s address %p with insufficient space\n",
+		type_check_kinds[data->type_check_kind],
+		(void *) ptr);
+	aprint_error("for an object of type %s\n", data->type->type_name);
+
+	//kubsan_close(&flags);
+	aprint_error("========================================"
+		"========================================\n");
+}
+
+static void ubsan_type_mismatch_common(struct type_mismatch_data_common *data,
+				unsigned long ptr)
+{
+
+	if (!ptr)
+		handle_null_ptr_deref(data);
+	else if (data->alignment && !IS_ALIGNED(ptr, data->alignment))
+		handle_misaligned_access(data, ptr);
+	else
+		handle_object_size_mismatch(data, ptr);
+}
 
 void __ubsan_handle_type_mismatch(struct type_mismatch_data *, unsigned long);
 void __ubsan_handle_type_mismatch(struct type_mismatch_data *data,
 				unsigned long ptr)
-{}
+{
+	struct type_mismatch_data_common common_data = {
+		.location = &data->location,
+		.type = data->type,
+		.alignment = data->alignment,
+		.type_check_kind = data->type_check_kind
+	};
+
+	ubsan_type_mismatch_common(&common_data, ptr);
+}
 
 void __ubsan_handle_type_mismatch_v1(struct type_mismatch_data_v1 *, unsigned long);
 void __ubsan_handle_type_mismatch_v1(struct type_mismatch_data_v1 *data,
 				unsigned long ptr)
-{}
+{
+	struct type_mismatch_data_common common_data = {
+		.location = &data->location,
+		.type = data->type,
+		.alignment = 1UL << data->log_alignment,
+		.type_check_kind = data->type_check_kind
+	};
+
+	ubsan_type_mismatch_common(&common_data, ptr);
+}
 
 void __ubsan_handle_vla_bound_not_positive(struct vla_bound_data *, unsigned long);
 void __ubsan_handle_vla_bound_not_positive(struct vla_bound_data *data,
