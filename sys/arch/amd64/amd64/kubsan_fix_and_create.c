@@ -2,7 +2,7 @@
 __KERNEL_RCSID(0, "$NetBSD$");
 
 #include <sys/kernel.h>
-#include <sys/param.h> //Kamil indication
+#include <sys/param.h>
 #include <sys/types.h>
 #include <sys/sched.h>
 #include <sys/bitops.h>
@@ -24,7 +24,7 @@ __KERNEL_RCSID(0, "$NetBSD$");
 
 /* These things will get ya killd*/
 unsigned int in_ubsan;
-#define IS_ALIGNED(x, a)		(((x) & ((typeof(x))(a) - 1)) == 0) //From linux/kernel.h line 61
+#define IS_ALIGNED(x, a)		(((x) & ((typeof(x))(a) - 1)) == 0) //From <linux/kernel.h> line 61
 
 
 /* Description -- TODO */
@@ -60,11 +60,11 @@ const char *type_check_kinds[] = {
 /* TODO:
  * Refactor test_and_set_bit. Check whether test_test_and_set || compare_and_swap would be better.
  * Add description
- * Rename ubsan.h --> kubsan.h, determine proper place
  * Understand type_check_kinds, maybe re-implement
  * Understand the low level bit definitions
- * Add locking to kubsan_open/close
+ * Add locking in future
  * Handle-specific error printing
+ * Move kubsan.c to sys/sys/kern/kubsan.c
 */
 
 static inline unsigned long
@@ -85,11 +85,10 @@ static bool was_reported(struct source_location *location)
 	return test_and_set_bit(REPORTED_BIT, &location->reported);
 }
 
-static void print_source_location(const char *prefix,
+static char* print_source_location(const char *prefix,
 				struct source_location *loc)
 {
-	aprint_error("%s %s:%d:%d\n", prefix, loc->file_name,
-		loc->line & LINE_MASK, loc->column & COLUMN_MASK);
+	return kmem_asprintf("%s %s:%d:%d\n", prefix, loc->file_name, loc->line & LINE_MASK, loc->column & COLUMN_MASK);
 }
 
 static bool suppress_report(struct source_location *loc)
@@ -159,11 +158,11 @@ static void val_to_string(char *str, size_t size, struct type_descriptor *type,
 {
 	if (type_is_int(type)) {
 		if (type_bit_width(type) == 128) {
-			KASSERT(1);
-
+			panic("KUBSan: Unexpected type width: 128 bit\n");
 		} else if (type_is_signed(type)) {
 			snprintf(str, size, "%ld",
 				(int64_t)get_signed_val(type, value));
+
 		} else {
 			snprintf(str, size, "%lu",
 				(uint64_t)get_unsigned_val(type, value));
@@ -211,10 +210,6 @@ static void handle_overflow(struct overflow_data *data, unsigned long lhs,
 	if (suppress_report(&data->location))
 		return;
 
-	//kubsan_open(&data->location, &flags);
-	aprint_error("========================================"
-		"========================================\n");
-	print_source_location("KUBSan: Undefined behaviour in", &data->location);
 
 	val_to_string(lhs_val_str, sizeof(lhs_val_str), type, lhs);
 	val_to_string(rhs_val_str, sizeof(rhs_val_str), type, rhs);
@@ -226,9 +221,6 @@ static void handle_overflow(struct overflow_data *data, unsigned long lhs,
 		rhs_val_str,
 		type->type_name);
 
-	//kubsan_close(&flags);
-	aprint_error("========================================"
-		"========================================\n");
 }
 
 
@@ -269,20 +261,12 @@ void __ubsan_handle_negate_overflow(struct overflow_data *data,
 	if (suppress_report(&data->location))
 		return;
 
-	//kubsan_open(&data->location, &flags);
-	aprint_error("========================================"
-		"========================================\n");
 	print_source_location("KUBSan: Undefined behaviour in", &data->location);
 
 	val_to_string(old_val_str, sizeof(old_val_str), data->type, old_val);
 
 	aprint_error("negation of %s cannot be represented in type %s:\n",
 		old_val_str, data->type->type_name);
-
-	//kubsan_close(&flags);
-	aprint_error("========================================"
-		"========================================\n");
-
 }
 
 void __ubsan_handle_divrem_overflow(struct overflow_data *, unsigned long, unsigned long);
@@ -296,9 +280,6 @@ void __ubsan_handle_divrem_overflow(struct overflow_data *data,
 	if (suppress_report(&data->location))
 		return;
 
-	//kubsan_open(&data->location, &flags);
-	aprint_error("========================================"
-		"========================================\n");
 	print_source_location("KUBSan: Undefined behaviour in", &data->location);
 
 	val_to_string(rhs_val_str, sizeof(rhs_val_str), data->type, rhs);
@@ -309,10 +290,6 @@ void __ubsan_handle_divrem_overflow(struct overflow_data *data,
 	else
 		aprint_error("division by zero\n");
 
-	//kubsan_close(&flags);
-	aprint_error("========================================"
-		"========================================\n");
-
 }
 
 static void handle_null_ptr_deref(struct type_mismatch_data_common *data)
@@ -322,18 +299,12 @@ static void handle_null_ptr_deref(struct type_mismatch_data_common *data)
 	if (suppress_report(data->location))
 		return;
 
-	//kubsan_open(data->location, &flags);
-	aprint_error("========================================"
-		"========================================\n");
 	print_source_location("KUBSan: Undefined behaviour in", data->location);
 
 	aprint_error("%s null pointer of type %s\n",
 		type_check_kinds[data->type_check_kind],
 		data->type->type_name);
 
-	//kubsan_close(&flags);
-	aprint_error("========================================"
-		"========================================\n");
 }
 
 static void handle_misaligned_access(struct type_mismatch_data_common *data,
@@ -344,9 +315,6 @@ static void handle_misaligned_access(struct type_mismatch_data_common *data,
 	if (suppress_report(data->location))
 		return;
 
-	//kubsan_open(data->location, &flags);
-	aprint_error("========================================"
-		"========================================\n");
 	print_source_location("KUBSan: Undefined behaviour in", data->location);
 
 	aprint_error("%s misaligned address %p for type %s\n",
@@ -354,9 +322,6 @@ static void handle_misaligned_access(struct type_mismatch_data_common *data,
 		(void *)ptr, data->type->type_name);
 	aprint_error("which requires %ld byte alignment\n", data->alignment);
 
-	//kubsan_close(&flags);
-	aprint_error("========================================"
-		"========================================\n");
 }
 
 static void handle_object_size_mismatch(struct type_mismatch_data_common *data,
@@ -367,9 +332,6 @@ static void handle_object_size_mismatch(struct type_mismatch_data_common *data,
 	if (suppress_report(data->location))
 		return;
 
-	//kubsan_open(data->location, &flags);
-	aprint_error("========================================"
-		"========================================\n");
 	print_source_location("KUBSan: Undefined behaviour in", data->location);
 
 	aprint_error("%s address %p with insufficient space\n",
@@ -377,9 +339,6 @@ static void handle_object_size_mismatch(struct type_mismatch_data_common *data,
 		(void *) ptr);
 	aprint_error("for an object of type %s\n", data->type->type_name);
 
-	//kubsan_close(&flags);
-	aprint_error("========================================"
-		"========================================\n");
 }
 
 static void ubsan_type_mismatch_common(struct type_mismatch_data_common *data,
@@ -432,18 +391,12 @@ void __ubsan_handle_vla_bound_not_positive(struct vla_bound_data *data,
 	if (suppress_report(&data->location))
 		return;
 
-	//kubsan_open(&data->location, &flags);
-	aprint_error("========================================"
-		"========================================\n");
 	print_source_location("KUBSan: Undefined behaviour in", &data->location);
 
 	val_to_string(bound_str, sizeof(bound_str), data->type, bound);
 	aprint_error("variable length array bound value %s <= 0\n", bound_str);
 
-	//kubsan_close(&flags);
-	aprint_error("========================================"
-		"========================================\n");
-
+	panic("KUBSan: Undefined behavior in %s variable length array bound value %s <= 0\n", print_source_location(&data->location), bound_str);
 }
 
 void __ubsan_handle_out_of_bounds(struct out_of_bounds_data *, unsigned long);
@@ -456,18 +409,12 @@ void __ubsan_handle_out_of_bounds(struct out_of_bounds_data *data,
 	if (suppress_report(&data->location))
 		return;
 
-	//kubsan_open(&data->location, &flags);
-	aprint_error("========================================"
-		"========================================\n");
 	print_source_location("KUBSan: Undefined behaviour in", &data->location);
 
 	val_to_string(index_str, sizeof(index_str), data->index_type, index);
 	aprint_error("index %s is out of range for type %s\n", index_str,
 		data->array_type->type_name);
 
-	//kubsan_close(&flags);
-	aprint_error("========================================"
-		"========================================\n");
 
 }
 
@@ -484,9 +431,6 @@ void __ubsan_handle_shift_out_of_bounds(struct shift_out_of_bounds_data *data,
 	if (suppress_report(&data->location))
 		return;
 
-	//kubsan_open(&data->location, &flags);
-	aprint_error("========================================"
-		"========================================\n");
 	print_source_location("KUBSan: Undefined behaviour in", &data->location);
 
 	val_to_string(rhs_str, sizeof(rhs_str), rhs_type, rhs);
@@ -510,12 +454,9 @@ void __ubsan_handle_shift_out_of_bounds(struct shift_out_of_bounds_data *data,
 			lhs_str, rhs_str,
 			lhs_type->type_name);
 
-	//kubsan_close(&flags);
-	aprint_error("========================================"
-		"========================================\n");
 }
 
-/* WHATODO
+/* This is unimplemented as unused
 void __noreturn
 __ubsan_handle_builtin_unreachable(struct unreachable_data *data);
 void __noreturn
@@ -533,9 +474,6 @@ void __ubsan_handle_load_invalid_value(struct invalid_value_data *data,
 	if (suppress_report(&data->location))
 		return;
 
-	//kubsan_open(&data->location, &flags);
-	aprint_error("========================================"
-		"========================================\n");
 	print_source_location("KUBSan: Undefined behaviour in", &data->location);
 
 	val_to_string(val_str, sizeof(val_str), data->type, val);
@@ -543,20 +481,17 @@ void __ubsan_handle_load_invalid_value(struct invalid_value_data *data,
 	aprint_error("load of value %s is not a valid value for type %s\n",
 		val_str, data->type->type_name);
 
-	//kubsan_close(&flags);
-	aprint_error("========================================"
-		"========================================\n");
 }
 
 void __ubsan_handle_nonnull_return(void *data);
 void __ubsan_handle_nonnull_return(void *data)
 {
-/* WHATODO */
+/* Unimplemented; Kernel does not use it */
 }
 
 /* Compiler moaning */
 void __ubsan_handle_nonnull_arg(void *data);
 void __ubsan_handle_nonnull_arg(void *data)
 {
-/* WHATODO */
+/* Unimplemented; Kernel doesn't use it */
 }
