@@ -63,8 +63,10 @@ const char *type_check_kinds[] = {
  * Understand type_check_kinds, maybe re-implement
  * Understand the low level bit definitions
  * Add locking in future
- * Handle-specific error printing
- * Move kubsan.c to sys/sys/kern/kubsan.c
+ * Move kubsan.c to sys/sys/kern/kubsan.c -- after refactor
+ * Proof-read new print_source_location()
+ * Refactor val_tostring() to return char *
+ * Finish panic_calls
 */
 
 static inline unsigned long
@@ -85,10 +87,11 @@ static bool was_reported(struct source_location *location)
 	return test_and_set_bit(REPORTED_BIT, &location->reported);
 }
 
-static char* print_source_location(const char *prefix,
+static void print_source_location(char *buf, size_t size,
 				struct source_location *loc)
 {
-	return kmem_asprintf("%s %s:%d:%d\n", prefix, loc->file_name, loc->line & LINE_MASK, loc->column & COLUMN_MASK);
+	snprintf(buf, size,
+		"%s:%d:%d\n", loc->file_name, loc->line & LINE_MASK, loc->column & COLUMN_MASK);
 }
 
 static bool suppress_report(struct source_location *loc)
@@ -202,25 +205,24 @@ static void handle_overflow(struct overflow_data *data, unsigned long lhs,
 {
 
 	struct type_descriptor *type = data->type;
-	//unsigned long flags;
-	//struct source_location *location;
 	char lhs_val_str[VALUE_LENGTH];
 	char rhs_val_str[VALUE_LENGTH];
+	char src_location_buffer[VALUE_LENGTH];
 
 	if (suppress_report(&data->location))
 		return;
 
-
 	val_to_string(lhs_val_str, sizeof(lhs_val_str), type, lhs);
 	val_to_string(rhs_val_str, sizeof(rhs_val_str), type, rhs);
-	aprint_error("%s integer overflow:\n",
-		type_is_signed(type) ? "signed" : "unsigned");
-	aprint_error("%s %c %s cannot be represented in type %s\n",
+
+	print_source_location(src_location_buffer, sizeof(src_location_buffer), &data->location);
+	panic("KUBSan: Undefined Behavior in: %s, %s integer overflow:\n%s %c %s cannot be represented in type %s\n",
+		src_location_buffer,
+		type_is_signed(type) ? "signed" : "unsigned",
 		lhs_val_str,
 		op,
 		rhs_val_str,
 		type->type_name);
-
 }
 
 
@@ -255,18 +257,19 @@ void __ubsan_handle_negate_overflow(struct overflow_data *, unsigned long);
 void __ubsan_handle_negate_overflow(struct overflow_data *data,
 				unsigned long old_val)
 {
-	//unsigned long flags;
 	char old_val_str[VALUE_LENGTH];
+	char src_location_buffer[VALUE_LENGTH];
 
 	if (suppress_report(&data->location))
 		return;
 
-	print_source_location("KUBSan: Undefined behaviour in", &data->location);
-
+	print_source_location(src_location_buffer, sizeof(src_location_buffer), &data->location);
 	val_to_string(old_val_str, sizeof(old_val_str), data->type, old_val);
 
-	aprint_error("negation of %s cannot be represented in type %s:\n",
-		old_val_str, data->type->type_name);
+	panic("KUBSan: Undefined behavior in %s, negation of %s cannot be represented in type %s\n",
+		src_location_buffer,
+		old_val_str,
+		data->type->type_name);
 }
 
 void __ubsan_handle_divrem_overflow(struct overflow_data *, unsigned long, unsigned long);
@@ -274,71 +277,85 @@ void __ubsan_handle_divrem_overflow(struct overflow_data *data,
 				unsigned long lhs,
 				unsigned long rhs)
 {
-	//unsigned long flags;
 	char rhs_val_str[VALUE_LENGTH];
+	char src_location_buffer[VALUE_LENGTH];
 
 	if (suppress_report(&data->location))
 		return;
 
-	print_source_location("KUBSan: Undefined behaviour in", &data->location);
-
+	print_source_location(src_location_buffer, sizeof(src_location_buffer), &data->location);
 	val_to_string(rhs_val_str, sizeof(rhs_val_str), data->type, rhs);
 
+	if ( type_is_signed(data->type) && get_signed_val(data->type, rhs) == -1)
+	{
+		panic("KUBSan: Undefined behavior in %s, division of %s by -1 cannot be represented in type %s\n", src_location_buffer, rhs_val_str, data->type->type_name);
+	}
+	else
+	{
+		panic("KUBSan: Undefined behavior in %s, division by zero\n", src_location_buffer);
+	}
+	/*
+	panic("KUBSan: Undefined behavior in %s, %s",
+		src_location_buffer,
+		(type_is_signed(data->type) && get_signed_val(data->type, rhs) == -1) ?
+			sprintf("division of %s by -1 cannot be represented in type %s\n", rhs_val_str, data->type->type_name) : "division by zero\n");
+		// Doing tricks, it's not bad code, it's a security specification :)
+	*/
+/*
 	if (type_is_signed(data->type) && get_signed_val(data->type, rhs) == -1)
-		aprint_error("division of %s by -1 cannot be represented in type %s\n",
+		"division of %s by -1 cannot be represented in type %s\n",
 			rhs_val_str, data->type->type_name);
 	else
 		aprint_error("division by zero\n");
-
+*/
 }
 
 static void handle_null_ptr_deref(struct type_mismatch_data_common *data)
 {
-	//unsigned long flags;
+	char src_location_buffer[VALUE_LENGTH];
 
 	if (suppress_report(data->location))
 		return;
 
-	print_source_location("KUBSan: Undefined behaviour in", data->location);
+	print_source_location(src_location_buffer, sizeof(src_location_buffer), data->location);
 
-	aprint_error("%s null pointer of type %s\n",
+	panic("KUBSan: Undefined behavior in %s, %s null pointer of type %s\n",
+		src_location_buffer,
 		type_check_kinds[data->type_check_kind],
 		data->type->type_name);
-
 }
 
 static void handle_misaligned_access(struct type_mismatch_data_common *data,
 				unsigned long ptr)
 {
-	//unsigned long flags;
-
+	char src_location_buffer[VALUE_LENGTH];
 	if (suppress_report(data->location))
 		return;
 
-	print_source_location("KUBSan: Undefined behaviour in", data->location);
+	print_source_location(src_location_buffer, sizeof(src_location_buffer), data->location);
 
-	aprint_error("%s misaligned address %p for type %s\n",
+	panic("KUBSan: Undefined behavior in %s, %s misaligned address %p for type %s\nwhich requires %ld byte alignment\n",
+		src_location_buffer,
 		type_check_kinds[data->type_check_kind],
-		(void *)ptr, data->type->type_name);
-	aprint_error("which requires %ld byte alignment\n", data->alignment);
-
+		(void *)ptr,
+		data->type->type_name,
+		data->alignment);
 }
 
 static void handle_object_size_mismatch(struct type_mismatch_data_common *data,
 					unsigned long ptr)
 {
-	//unsigned long flags;
-
+	char src_location_buffer[VALUE_LENGTH];
 	if (suppress_report(data->location))
 		return;
 
-	print_source_location("KUBSan: Undefined behaviour in", data->location);
+	print_source_location(src_location_buffer, sizeof(src_location_buffer), data->location);
 
-	aprint_error("%s address %p with insufficient space\n",
+	panic("KUBSan: Undefined behavior in %s, %s address %p with insufficient space\nfor an object of type %s\n",
+		src_location_buffer,
 		type_check_kinds[data->type_check_kind],
-		(void *) ptr);
-	aprint_error("for an object of type %s\n", data->type->type_name);
-
+		(void *) ptr,
+		data->type->type_name);
 }
 
 static void ubsan_type_mismatch_common(struct type_mismatch_data_common *data,
@@ -385,34 +402,36 @@ void __ubsan_handle_vla_bound_not_positive(struct vla_bound_data *, unsigned lon
 void __ubsan_handle_vla_bound_not_positive(struct vla_bound_data *data,
 					unsigned long bound)
 {
-	//unsigned long flags;
 	char bound_str[VALUE_LENGTH];
+	char src_location_buffer[VALUE_LENGTH];
 
 	if (suppress_report(&data->location))
 		return;
 
-	print_source_location("KUBSan: Undefined behaviour in", &data->location);
-
 	val_to_string(bound_str, sizeof(bound_str), data->type, bound);
-	aprint_error("variable length array bound value %s <= 0\n", bound_str);
+	print_source_location(src_location_buffer, sizeof(src_location_buffer), &data->location),
 
-	panic("KUBSan: Undefined behavior in %s variable length array bound value %s <= 0\n", print_source_location(&data->location), bound_str);
+	panic("KUBSan: Undefined behavior in %s variable length array bound value %s <= 0\n",
+			src_location_buffer,
+			bound_str);
 }
 
 void __ubsan_handle_out_of_bounds(struct out_of_bounds_data *, unsigned long);
 void __ubsan_handle_out_of_bounds(struct out_of_bounds_data *data,
 				unsigned long index)
 {
-	//unsigned long flags;
 	char index_str[VALUE_LENGTH];
+	char src_location_buffer[VALUE_LENGTH];
 
 	if (suppress_report(&data->location))
 		return;
 
-	print_source_location("KUBSan: Undefined behaviour in", &data->location);
-
+	print_source_location(src_location_buffer, sizeof(src_location_buffer), &data->location);
 	val_to_string(index_str, sizeof(index_str), data->index_type, index);
-	aprint_error("index %s is out of range for type %s\n", index_str,
+
+	panic("KUBSan: Undefined behavior in %s, index %s is out of range for type %s\n",
+		src_location_buffer,
+		index_str,
 		data->array_type->type_name);
 
 
@@ -427,11 +446,12 @@ void __ubsan_handle_shift_out_of_bounds(struct shift_out_of_bounds_data *data,
 	struct type_descriptor *lhs_type = data->lhs_type;
 	char rhs_str[VALUE_LENGTH];
 	char lhs_str[VALUE_LENGTH];
+	char src_location_buffer[VALUE_LENGTH];
 
 	if (suppress_report(&data->location))
 		return;
 
-	print_source_location("KUBSan: Undefined behaviour in", &data->location);
+	print_source_location(src_location_buffer, sizeof(src_location_buffer), &data->location);
 
 	val_to_string(rhs_str, sizeof(rhs_str), rhs_type, rhs);
 	val_to_string(lhs_str, sizeof(lhs_str), lhs_type, lhs);
@@ -453,7 +473,9 @@ void __ubsan_handle_shift_out_of_bounds(struct shift_out_of_bounds_data *data,
 			" represented in type %s\n",
 			lhs_str, rhs_str,
 			lhs_type->type_name);
-
+	/* TODO
+	panic();
+	*/
 }
 
 /* This is unimplemented as unused
@@ -468,18 +490,20 @@ void __ubsan_handle_load_invalid_value(struct invalid_value_data *, unsigned lon
 void __ubsan_handle_load_invalid_value(struct invalid_value_data *data,
 				unsigned long val)
 {
-	//unsigned long flags;
 	char val_str[VALUE_LENGTH];
+	char src_location_buffer[VALUE_LENGTH];
 
 	if (suppress_report(&data->location))
 		return;
 
-	print_source_location("KUBSan: Undefined behaviour in", &data->location);
-
+	print_source_location(src_location_buffer, sizeof(src_location_buffer), &data->location);
 	val_to_string(val_str, sizeof(val_str), data->type, val);
 
-	aprint_error("load of value %s is not a valid value for type %s\n",
-		val_str, data->type->type_name);
+	panic("KUBSan: Undefined behavior in %s, load of value %s is not a valid value for type %s\n",
+			src_location_buffer,
+			val_str,
+			data->type->type_name);
+
 
 }
 
