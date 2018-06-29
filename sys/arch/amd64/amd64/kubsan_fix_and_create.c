@@ -64,6 +64,7 @@ const char *type_check_kinds[] = {
  * Understand type_check_kinds, maybe re-implement
  * Understand the low level bit definitions
  * Add locking to kubsan_open/close
+ * Handle-specific error printing
 */
 
 static inline unsigned long
@@ -137,12 +138,11 @@ static s_max get_signed_val(struct type_descriptor *type, unsigned long val)
 	return *(s_max *)val;
 }
 
-/* Commented out for now until used in the handle scenario
 static bool val_is_negative(struct type_descriptor *type, unsigned long val)
 {
 	return type_is_signed(type) && get_signed_val(type, val) < 0;
 }
-*/
+
 static u_max get_unsigned_val(struct type_descriptor *type, unsigned long val)
 {
 	if (is_inline_int(type))
@@ -425,19 +425,97 @@ void __ubsan_handle_type_mismatch_v1(struct type_mismatch_data_v1 *data,
 void __ubsan_handle_vla_bound_not_positive(struct vla_bound_data *, unsigned long);
 void __ubsan_handle_vla_bound_not_positive(struct vla_bound_data *data,
 					unsigned long bound)
-{}
+{
+	//unsigned long flags;
+	char bound_str[VALUE_LENGTH];
+
+	if (suppress_report(&data->location))
+		return;
+
+	//kubsan_open(&data->location, &flags);
+	aprint_error("========================================"
+		"========================================\n");
+	print_source_location("KUBSan: Undefined behaviour in", &data->location);
+
+	val_to_string(bound_str, sizeof(bound_str), data->type, bound);
+	aprint_error("variable length array bound value %s <= 0\n", bound_str);
+
+	//kubsan_close(&flags);
+	aprint_error("========================================"
+		"========================================\n");
+
+}
 
 void __ubsan_handle_out_of_bounds(struct out_of_bounds_data *, unsigned long);
 void __ubsan_handle_out_of_bounds(struct out_of_bounds_data *data,
 				unsigned long index)
-{}
+{
+	//unsigned long flags;
+	char index_str[VALUE_LENGTH];
+
+	if (suppress_report(&data->location))
+		return;
+
+	//kubsan_open(&data->location, &flags);
+	aprint_error("========================================"
+		"========================================\n");
+	print_source_location("KUBSan: Undefined behaviour in", &data->location);
+
+	val_to_string(index_str, sizeof(index_str), data->index_type, index);
+	aprint_error("index %s is out of range for type %s\n", index_str,
+		data->array_type->type_name);
+
+	//kubsan_close(&flags);
+	aprint_error("========================================"
+		"========================================\n");
+
+}
 
 void __ubsan_handle_shift_out_of_bounds(struct shift_out_of_bounds_data *, unsigned long, unsigned long);
 void __ubsan_handle_shift_out_of_bounds(struct shift_out_of_bounds_data *data,
 					unsigned long lhs, unsigned long rhs)
-{}
+{
+	//unsigned long flags;
+	struct type_descriptor *rhs_type = data->rhs_type;
+	struct type_descriptor *lhs_type = data->lhs_type;
+	char rhs_str[VALUE_LENGTH];
+	char lhs_str[VALUE_LENGTH];
 
-/*
+	if (suppress_report(&data->location))
+		return;
+
+	//kubsan_open(&data->location, &flags);
+	aprint_error("========================================"
+		"========================================\n");
+	print_source_location("KUBSan: Undefined behaviour in", &data->location);
+
+	val_to_string(rhs_str, sizeof(rhs_str), rhs_type, rhs);
+	val_to_string(lhs_str, sizeof(lhs_str), lhs_type, lhs);
+
+	if (val_is_negative(rhs_type, rhs))
+		aprint_error("shift exponent %s is negative\n", rhs_str);
+
+	else if (get_unsigned_val(rhs_type, rhs) >=
+		type_bit_width(lhs_type))
+		aprint_error("shift exponent %s is too large for %u-bit type %s\n",
+			rhs_str,
+			type_bit_width(lhs_type),
+			lhs_type->type_name);
+	else if (val_is_negative(lhs_type, lhs))
+		aprint_error("left shift of negative value %s\n",
+			lhs_str);
+	else
+		aprint_error("left shift of %s by %s places cannot be"
+			" represented in type %s\n",
+			lhs_str, rhs_str,
+			lhs_type->type_name);
+
+	//kubsan_close(&flags);
+	aprint_error("========================================"
+		"========================================\n");
+}
+
+/* WHATODO
 void __noreturn
 __ubsan_handle_builtin_unreachable(struct unreachable_data *data);
 void __noreturn
@@ -448,11 +526,37 @@ __ubsan_handle_builtin_unreachable(struct unreachable_data *data)
 void __ubsan_handle_load_invalid_value(struct invalid_value_data *, unsigned long);
 void __ubsan_handle_load_invalid_value(struct invalid_value_data *data,
 				unsigned long val)
-{}
+{
+	//unsigned long flags;
+	char val_str[VALUE_LENGTH];
+
+	if (suppress_report(&data->location))
+		return;
+
+	//kubsan_open(&data->location, &flags);
+	aprint_error("========================================"
+		"========================================\n");
+	print_source_location("KUBSan: Undefined behaviour in", &data->location);
+
+	val_to_string(val_str, sizeof(val_str), data->type, val);
+
+	aprint_error("load of value %s is not a valid value for type %s\n",
+		val_str, data->type->type_name);
+
+	//kubsan_close(&flags);
+	aprint_error("========================================"
+		"========================================\n");
+}
 
 void __ubsan_handle_nonnull_return(void *data);
-void __ubsan_handle_nonnull_return(void *data) {}
+void __ubsan_handle_nonnull_return(void *data)
+{
+/* WHATODO */
+}
 
 /* Compiler moaning */
 void __ubsan_handle_nonnull_arg(void *data);
-void __ubsan_handle_nonnull_arg(void *data) {}
+void __ubsan_handle_nonnull_arg(void *data)
+{
+/* WHATODO */
+}
