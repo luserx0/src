@@ -60,4 +60,9 @@ links::
 	-for i in ${ARCH}; do \
 	    (cd ../arch/$$i && ${MAKE} ${MFLAGS} SYSTAGS=${SYSTAGS} links); done
 
+# Kernel Undefined Behavior Sanitizer options
+.if ${KUBSAN:U0} > 0 && ${HAVE_GCC:U0} > 0
+CFLAGS+=		-fsanitize=undefined
+.endif
+
 .include <bsd.files.mk>

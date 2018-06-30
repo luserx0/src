@@ -48,11 +48,6 @@ CFLAGS+=      -mindirect-branch=thunk-inline
 CFLAGS+=      -mindirect-branch-register
 .endif
 
-# Kernel Undefined Behavior Sanitizer options
-.if ${KUBSAN:U0} > 0 && ${HAVE_GCC:U0} > 0
-CFLAGS+=		-fsanitize=undefined
-.endif
-
 ##
 ## (3) libkern and compat
 ##

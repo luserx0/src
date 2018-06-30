@@ -217,3 +217,10 @@ file	miscfs/genfs/layer_vfsops.c	layerfs
 file	miscfs/genfs/layer_vnops.c	layerfs
 
 file	miscfs/specfs/spec_vnops.c	vfs
+
+define	kubsan
+# Enable Kernel Undefined Behavior Sanitizer options
+defflag opt_kubsan.h KUBSAN
+
+file	kern/kern_ubsan.c	kubsan
+

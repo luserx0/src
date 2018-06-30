@@ -90,3 +90,17 @@ typedef uintmax_t u_max;
 
 #endif
 
+void __ubsan_handle_load_invalid_value(struct invalid_value_data *, unsigned long);
+void __ubsan_handle_nonnull_return(void *data);
+void __ubsan_handle_nonnull_arg(void *data);
+void __ubsan_handle_shift_out_of_bounds(struct shift_out_of_bounds_data *, unsigned long, unsigned long);
+void __ubsan_handle_out_of_bounds(struct out_of_bounds_data *, unsigned long);
+void __ubsan_handle_vla_bound_not_positive(struct vla_bound_data *, unsigned long);
+void __ubsan_handle_type_mismatch_v1(struct type_mismatch_data_v1 *, unsigned long);
+void __ubsan_handle_type_mismatch(struct type_mismatch_data *, unsigned long);
+void __ubsan_handle_divrem_overflow(struct overflow_data *, unsigned long, unsigned long);
+void __ubsan_handle_negate_overflow(struct overflow_data *, unsigned long);
+void __ubsan_handle_mul_overflow(struct overflow_data *, unsigned long, unsigned long);
+void __ubsan_handle_sub_overflow(struct overflow_data *, unsigned long, unsigned long);
+void __ubsan_handle_add_overflow(struct overflow_data *, unsigned long, unsigned long);
+
