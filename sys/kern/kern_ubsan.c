@@ -19,7 +19,27 @@ __KERNEL_RCSID(0, "$NetBSD$");
 #define IS_ALIGNED(x, a)		(((x) & ((typeof(x))(a) - 1)) == 0)
 
 
-/* Description -- TODO */
+/* Description -- TODO
+ *
+ *ROADMAP:
+ *	Steps:
+	- make it bootable,
+	- if necessary mark some files as not sanitizable,
+	- refactor the code for marking an error already reported,
+	- implement/refactor the code to mark that we are right now reporting the error,
+	- add sysctl to toggle fatal/non-fatal kubsan errors,
+	- refactor the code to make it not sharing the code with Linux and solve this way the licensing issue,
+	- catch bugs with booting to shell, catch bugs with running ATF tests,
+	- add sanitizer_common.c and share with kasan (ktsan, kmsan, ...)
+	- add ATF tests
+
+	We will iterate over them from top to down.
+
+	- Week 3:
+		List all Linux not sanitized files ("UBSAN_SANITIZE_*.o := n")
+		for amd64 and determine equivalents for NetBSD.
+		Mark these files as not built with KUBSAN.
+*/
 
 const char *type_check_kinds[] = {
 	"load of",
@@ -52,7 +72,6 @@ const char *type_check_kinds[] = {
  * Add description
  * Understand type_check_kinds, maybe re-implement
  * Understand the low level bit definitions
- * Move kubsan.c to sys/sys/kern/kubsan.c -- CHECK distrib files for the transition
 */
 
 static inline unsigned long
@@ -92,7 +111,7 @@ static bool type_is_int(struct type_descriptor *type)
 
 static bool type_is_signed(struct type_descriptor *type)
 {
-	KASSERT(!type_is_int(type));
+	KASSERT(type_is_int(type));  //Like WARN_ON but with a reverse boolean condition
 	return  type->type_info & 1;
 }
 
@@ -108,7 +127,7 @@ static bool is_inline_int(struct type_descriptor *type)
 	unsigned inline_bits = sizeof(unsigned long)*8;
 	unsigned bits = type_bit_width(type);
 
-	KASSERT(!type_is_int(type));
+	KASSERT(type_is_int(type));
 
 	return bits <= inline_bits;
 }
