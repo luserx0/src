@@ -23,15 +23,15 @@ __KERNEL_RCSID(0, "$NetBSD$");
  *
  *ROADMAP:
  *	Steps:
-	- make it bootable,
-	- if necessary mark some files as not sanitizable,
-	- refactor the code for marking an error already reported,
-	- implement/refactor the code to mark that we are right now reporting the error,
-	- add sysctl to toggle fatal/non-fatal kubsan errors,
-	- refactor the code to make it not sharing the code with Linux and solve this way the licensing issue,
-	- catch bugs with booting to shell, catch bugs with running ATF tests,
-	- add sanitizer_common.c and share with kasan (ktsan, kmsan, ...)
-	- add ATF tests
+	1) make it bootable, --CHECK
+	2) if necessary mark some files as not sanitizable, --TODO
+	3) refactor the code for marking an error already reported,
+	4) implement/refactor the code to mark that we are right now reporting the error,
+	5) add sysctl to toggle fatal/non-fatal kubsan errors,
+	6) refactor the code to make it not sharing the code with Linux and solve this way the licensing issue,
+	7) catch bugs with booting to shell, catch bugs with running ATF tests, --TODO
+	8) add sanitizer_common.c and share with kasan (ktsan, kmsan, ...)
+	9) add ATF tests
 
 	We will iterate over them from top to down.
 
@@ -72,6 +72,7 @@ const char *type_check_kinds[] = {
  * Add description
  * Understand type_check_kinds, maybe re-implement
  * Understand the low level bit definitions
+ * Format the print messages output
 */
 
 static inline unsigned long
@@ -96,7 +97,7 @@ static void print_source_location(char *buf, size_t size,
 				struct source_location *loc)
 {
 	snprintf(buf, size,
-		"%s:%d:%d\n", loc->file_name, loc->line & LINE_MASK, loc->column & COLUMN_MASK);
+		"%s:%d:%d", loc->file_name, loc->line & LINE_MASK, loc->column & COLUMN_MASK);
 }
 
 static bool suppress_report(struct source_location *loc)
@@ -187,7 +188,7 @@ static void handle_overflow(struct overflow_data *data, unsigned long lhs,
 	struct type_descriptor *type = data->type;
 	char lhs_val_str[VALUE_LENGTH];
 	char rhs_val_str[VALUE_LENGTH];
-	char src_location_buffer[VALUE_LENGTH];
+	char src_location_buffer[MAXPATHLEN+64];
 
 	if (suppress_report(&data->location))
 		return;
@@ -196,7 +197,7 @@ static void handle_overflow(struct overflow_data *data, unsigned long lhs,
 	val_to_string(rhs_val_str, sizeof(rhs_val_str), type, rhs);
 
 	print_source_location(src_location_buffer, sizeof(src_location_buffer), &data->location);
-	panic("KUBSan: Undefined Behavior in: %s, %s integer overflow:\n%s %c %s cannot be represented in type %s\n",
+	panic("KUBSan: Undefined Behavior in: %s, %s integer overflow: %s %c %s cannot be represented in type %s\n",
 		src_location_buffer,
 		type_is_signed(type) ? "signed" : "unsigned",
 		lhs_val_str,
@@ -233,7 +234,7 @@ void __ubsan_handle_negate_overflow(struct overflow_data *data,
 				unsigned long old_val)
 {
 	char old_val_str[VALUE_LENGTH];
-	char src_location_buffer[VALUE_LENGTH];
+	char src_location_buffer[MAXPATHLEN+64];
 
 	if (suppress_report(&data->location))
 		return;
@@ -252,7 +253,7 @@ void __ubsan_handle_divrem_overflow(struct overflow_data *data,
 				unsigned long rhs)
 {
 	char rhs_val_str[VALUE_LENGTH];
-	char src_location_buffer[VALUE_LENGTH];
+	char src_location_buffer[MAXPATHLEN+64];
 
 	if (suppress_report(&data->location))
 		return;
@@ -272,7 +273,7 @@ void __ubsan_handle_divrem_overflow(struct overflow_data *data,
 
 static void handle_null_ptr_deref(struct type_mismatch_data_common *data)
 {
-	char src_location_buffer[VALUE_LENGTH];
+	char src_location_buffer[MAXPATHLEN+64];
 
 	if (suppress_report(data->location))
 		return;
@@ -288,13 +289,13 @@ static void handle_null_ptr_deref(struct type_mismatch_data_common *data)
 static void handle_misaligned_access(struct type_mismatch_data_common *data,
 				unsigned long ptr)
 {
-	char src_location_buffer[VALUE_LENGTH];
+	char src_location_buffer[MAXPATHLEN+64];
 	if (suppress_report(data->location))
 		return;
 
 	print_source_location(src_location_buffer, sizeof(src_location_buffer), data->location);
 
-	panic("KUBSan: Undefined behavior in %s, %s misaligned address %p for type %s\nwhich requires %ld byte alignment\n",
+	panic("KUBSan: Undefined behavior in %s, %s misaligned address %p for type %s which requires %ld byte alignment\n",
 		src_location_buffer,
 		type_check_kinds[data->type_check_kind],
 		(void *)ptr,
@@ -305,13 +306,13 @@ static void handle_misaligned_access(struct type_mismatch_data_common *data,
 static void handle_object_size_mismatch(struct type_mismatch_data_common *data,
 					unsigned long ptr)
 {
-	char src_location_buffer[VALUE_LENGTH];
+	char src_location_buffer[MAXPATHLEN+64];
 	if (suppress_report(data->location))
 		return;
 
 	print_source_location(src_location_buffer, sizeof(src_location_buffer), data->location);
 
-	panic("KUBSan: Undefined behavior in %s, %s address %p with insufficient space\nfor an object of type %s\n",
+	panic("KUBSan: Undefined behavior in %s, %s address %p with insufficient spacefor an object of type %s\n",
 		src_location_buffer,
 		type_check_kinds[data->type_check_kind],
 		(void *) ptr,
@@ -360,7 +361,7 @@ void __ubsan_handle_vla_bound_not_positive(struct vla_bound_data *data,
 					unsigned long bound)
 {
 	char bound_str[VALUE_LENGTH];
-	char src_location_buffer[VALUE_LENGTH];
+	char src_location_buffer[MAXPATHLEN+64];
 
 	if (suppress_report(&data->location))
 		return;
@@ -377,7 +378,7 @@ void __ubsan_handle_out_of_bounds(struct out_of_bounds_data *data,
 				unsigned long index)
 {
 	char index_str[VALUE_LENGTH];
-	char src_location_buffer[VALUE_LENGTH];
+	char src_location_buffer[MAXPATHLEN+64];
 
 	if (suppress_report(&data->location))
 		return;
@@ -400,7 +401,7 @@ void __ubsan_handle_shift_out_of_bounds(struct shift_out_of_bounds_data *data,
 	struct type_descriptor *lhs_type = data->lhs_type;
 	char rhs_str[VALUE_LENGTH];
 	char lhs_str[VALUE_LENGTH];
-	char src_location_buffer[VALUE_LENGTH];
+	char src_location_buffer[MAXPATHLEN+64];
 
 	if (suppress_report(&data->location))
 		return;
