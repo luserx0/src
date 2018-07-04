@@ -17,30 +17,28 @@ __KERNEL_RCSID(0, "$NetBSD$");
 #include <sys/kubsan.h>
 
 #define IS_ALIGNED(x, a)		(((x) & ((typeof(x))(a) - 1)) == 0)
-
+#define panic printf
 
 /* Description -- TODO
  *
  *ROADMAP:
  *	Steps:
 	1) make it bootable, --CHECK
-	2) if necessary mark some files as not sanitizable, --TODO
-	3) refactor the code for marking an error already reported,
-	4) implement/refactor the code to mark that we are right now reporting the error,
-	5) add sysctl to toggle fatal/non-fatal kubsan errors,
-	6) refactor the code to make it not sharing the code with Linux and solve this way the licensing issue,
-	7) catch bugs with booting to shell, catch bugs with running ATF tests, --TODO
+	2) if necessary mark some files as not sanitizable, --CHECK
+	3) catch bugs with booting to shell, catch bugs with running ATF tests, --TODO
+	4) refactor the code for marking an error already reported,
+	5) implement/refactor the code to mark that we are right now reporting the error,
+	6) add sysctl to toggle fatal/non-fatal kubsan errors,
+	7) refactor the code to make it not sharing the code with Linux and solve this way the licensing issue,
 	8) add sanitizer_common.c and share with kasan (ktsan, kmsan, ...)
 	9) add ATF tests
 
 	We will iterate over them from top to down.
 
-	- Week 3:
-		List all Linux not sanitized files ("UBSAN_SANITIZE_*.o := n")
-		for amd64 and determine equivalents for NetBSD.
-		Mark these files as not built with KUBSAN.
-*/
+	Deliverable forPhase 2:
+		Sort all problems detected with kubsan during boot and during execution of ATF tests.
 
+*/
 const char *type_check_kinds[] = {
 	"load of",
 	"store to",
@@ -312,7 +310,7 @@ static void handle_object_size_mismatch(struct type_mismatch_data_common *data,
 
 	print_source_location(src_location_buffer, sizeof(src_location_buffer), data->location);
 
-	panic("KUBSan: Undefined behavior in %s, %s address %p with insufficient spacefor an object of type %s\n",
+	panic("KUBSan: Undefined behavior in %s, %s address %p with insufficient space for an object of type %s\n",
 		src_location_buffer,
 		type_check_kinds[data->type_check_kind],
 		(void *) ptr,
