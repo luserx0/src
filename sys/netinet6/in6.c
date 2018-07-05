@@ -1,5 +1,4 @@
-/*	$NetBSD: in6.c,v 1.267 2018/05/29 04:37:16 ozaki-r Exp $	*/
-/*	$KAME: in6.c,v 1.198 2001/07/18 09:12:38 itojun Exp $	*/
+/*	$NetBSD: in6.c,v 1.269 2018/07/04 00:35:33 kamil Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -62,7 +61,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: in6.c,v 1.267 2018/05/29 04:37:16 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: in6.c,v 1.269 2018/07/04 00:35:33 kamil Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -117,7 +116,7 @@ MALLOC_DEFINE(M_IP6OPT, "ip6_options", "IPv6 options");
 #ifdef	IN6_DEBUG
 #define	IN6_DPRINTF(__fmt, ...)	printf(__fmt, __VA_ARGS__)
 #else
-#define	IN6_DPRINTF(__fmt, ...)	do { } while (/*CONSTCOND*/0) 
+#define	IN6_DPRINTF(__fmt, ...)	do { } while (/*CONSTCOND*/0)
 #endif /* IN6_DEBUG */
 
 /*
@@ -632,7 +631,7 @@ in6_control1(struct socket *so, u_long cmd, void *data, struct ifnet *ifp)
 			 * signed.
 			 */
 			maxexpire = ((time_t)~0) &
-			    ~((time_t)1 << ((sizeof(maxexpire) * NBBY) - 1));
+			    (time_t)~(1ULL << ((sizeof(maxexpire) * NBBY) - 1));
 			if (ia->ia6_lifetime.ia6t_vltime <
 			    maxexpire - ia->ia6_updatetime) {
 				retlt->ia6t_expire = ia->ia6_updatetime +
@@ -653,7 +652,7 @@ in6_control1(struct socket *so, u_long cmd, void *data, struct ifnet *ifp)
 			 * signed.
 			 */
 			maxexpire = ((time_t)~0) &
-			    ~((time_t)1 << ((sizeof(maxexpire) * NBBY) - 1));
+			    (time_t)~(1ULL << ((sizeof(maxexpire) * NBBY) - 1));
 			if (ia->ia6_lifetime.ia6t_pltime <
 			    maxexpire - ia->ia6_updatetime) {
 				retlt->ia6t_preferred = ia->ia6_updatetime +
@@ -1510,7 +1509,7 @@ in6_purge_mcast_references(struct in6_multi *in6m)
  * address encoding scheme. (see figure on page 8)
  */
 static int
-in6_lifaddr_ioctl(struct socket *so, u_long cmd, void *data, 
+in6_lifaddr_ioctl(struct socket *so, u_long cmd, void *data,
 	struct ifnet *ifp)
 {
 	struct in6_ifaddr *ia = NULL; /* XXX gcc 4.8 maybe-uninitialized */
@@ -1766,7 +1765,7 @@ in6_lifaddr_ioctl(struct socket *so, u_long cmd, void *data,
  * and routing table entry.
  */
 static int
-in6_ifinit(struct ifnet *ifp, struct in6_ifaddr *ia, 
+in6_ifinit(struct ifnet *ifp, struct in6_ifaddr *ia,
 	const struct sockaddr_in6 *sin6, int newhost)
 {
 	int	error = 0, ifacount = 0;
