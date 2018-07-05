@@ -1,5 +1,4 @@
-/*	$NetBSD: intr.c,v 1.125 2018/04/04 22:52:59 christos Exp $	*/
-
+/*	$NetBSD: intr.c,v 1.127 2018/07/03 11:45:54 kamil Exp $	*/
 /*
  * Copyright (c) 2007, 2008, 2009 The NetBSD Foundation, Inc.
  * All rights reserved.
@@ -133,7 +132,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: intr.c,v 1.125 2018/04/04 22:52:59 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: intr.c,v 1.127 2018/07/03 11:45:54 kamil Exp $");
 
 #include "opt_intrdebug.h"
 #include "opt_multiprocessor.h"
@@ -333,18 +332,18 @@ intr_calculatemasks(struct cpu_info *ci)
 			continue;
 		}
 		for (q = ci->ci_isources[irq]->is_handlers; q; q = q->ih_next)
-			levels |= 1 << q->ih_level;
+			levels |= 1U << q->ih_level;
 		intrlevel[irq] = levels;
 		if (levels)
-			unusedirqs &= ~(1 << irq);
+			unusedirqs &= ~(1U << irq);
 	}
 
 	/* Then figure out which IRQs use each level. */
 	for (level = 0; level < NIPL; level++) {
 		int irqs = 0;
 		for (irq = 0; irq < MAX_INTR_SOURCES; irq++)
-			if (intrlevel[irq] & (1 << level))
-				irqs |= 1 << irq;
+			if (intrlevel[irq] & (1U << level))
+				irqs |= 1U << irq;
 		ci->ci_imask[level] = irqs | unusedirqs;
 	}
 
