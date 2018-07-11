@@ -262,7 +262,7 @@ AcpiOsWritePciConfiguration(ACPI_PCI_ID *PciId, UINT32 Register,
 	switch (Width) {
 	case 8:
 		tmp = pci_conf_read(pc, tag, Register & ~3);
-		tmp &= ~(0xff << ((Register & 3) * 8));
+		tmp &= ~((UINT32)0xff << ((Register & 3) * 8));
 		tmp |= (Value << ((Register & 3) * 8));
 		break;
 
